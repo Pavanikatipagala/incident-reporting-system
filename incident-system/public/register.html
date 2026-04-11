@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Register — IncidentHub</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <a class="navbar-brand" href="/">IncidentHub</a>
+      <div class="nav-links">
+        <a href="/login.html">Login</a>
+        <a href="/">Home</a>
+      </div>
+    </nav>
+    <div class="container" style="max-width: 420px">
+      <h1>Citizen registration</h1>
+      <p class="muted">Only citizens self-register. Admin and department accounts are created by your organization.</p>
+      <div id="alert"></div>
+      <div class="card">
+        <form id="reg-form">
+          <div class="form-group">
+            <label for="name">Full name</label>
+            <input id="name" name="name" required autocomplete="name" />
+          </div>
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" required autocomplete="email" />
+          </div>
+          <div class="form-group">
+            <label for="password">Password (min 6 characters)</label>
+            <input id="password" name="password" type="password" minlength="6" required autocomplete="new-password" />
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%">Create account</button>
+        </form>
+      </div>
+      <p class="muted"><a href="/login.html">Already have an account?</a></p>
+    </div>
+    <script src="/js/api.js"></script>
+    <script>
+      const form = document.getElementById("reg-form");
+      const alertBox = document.getElementById("alert");
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        alertBox.innerHTML = "";
+        const name = document.getElementById("name").value.trim();
+        const email = document.getElementById("email").value.trim();
+        const password = document.getElementById("password").value;
+        try {
+          const data = await apiRequest("/auth/register", {
+            method: "POST",
+            body: JSON.stringify({ name, email, password }),
+          });
+          saveSession(data.token, data.user);
+          window.location.href = "/citizen.html";
+        } catch (err) {
+          alertBox.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+        }
+      });
+    </script>
+  </body>
+</html>
+

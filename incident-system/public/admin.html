@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Dashboard — IncidentHub</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <a class="navbar-brand" href="/admin.html">IncidentHub — Admin</a>
+      <div class="nav-links">
+        <span id="welcome" class="muted"></span>
+        <button type="button" class="btn btn-secondary btn-sm" id="logout">Logout</button>
+      </div>
+    </nav>
+    <div class="container">
+      <h1>Administration</h1>
+      <p class="subtitle">Monitor all complaints, assign departments, and update status.</p>
+      <div id="alert"></div>
+
+      <div class="grid-stats" id="stats">
+        <div class="stat-box"><div class="num" id="st-total">—</div><div class="label">Total</div></div>
+        <div class="stat-box"><div class="num" id="st-pending">—</div><div class="label">Pending</div></div>
+        <div class="stat-box"><div class="num" id="st-assigned">—</div><div class="label">Assigned</div></div>
+        <div class="stat-box"><div class="num" id="st-progress">—</div><div class="label">In progress</div></div>
+        <div class="stat-box"><div class="num" id="st-resolved">—</div><div class="label">Resolved</div></div>
+      </div>
+
+      <div class="card table-wrap">
+        <div class="form-row" style="margin-bottom: 1rem">
+          <div class="form-group" style="margin-bottom: 0">
+            <label for="filter-status">Filter by status</label>
+            <select id="filter-status">
+              <option value="">All</option>
+              <option value="pending">Pending</option>
+              <option value="assigned">Assigned</option>
+              <option value="in_progress">In progress</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </div>
+          <div style="align-self: flex-end">
+            <button type="button" class="btn btn-secondary" id="refresh">Refresh</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Citizen</th>
+              <th>Category</th>
+              <th>Location</th>
+              <th>Status</th>
+              <th>Assign</th>
+              <th>Admin status</th>
+              <th>Delete</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script>
+      const user = getUser();
+      if (!getToken() || !user || user.role !== "admin") {
+        window.location.href = "/login.html";
+      }
+      document.getElementById("welcome").textContent = user.name;
+
+      let departments = [];
+
+      function showAlert(msg, ok) {
+        const el = document.getElementById("alert");
+        el.innerHTML = msg ? `<div class="alert ${ok ? "alert-success" : "alert-error"}">${msg}</div>` : "";
+      }
+
+      function badgeClass(status) {
+        return "badge badge-" + status;
+      }
+
+      function escapeHtml(s) {
+        if (!s) return "";
+        const d = document.createElement("div");
+        d.textContent = s;
+        return d.innerHTML;
+      }
+
+      async function loadStats() {
+        const d = await apiRequest("/admin/dashboard");
+        document.getElementById("st-total").textContent = d.stats.total;
+        document.getElementById("st-pending").textContent = d.stats.pending;
+        document.getElementById("st-assigned").textContent = d.stats.assigned;
+        document.getElementById("st-progress").textContent = d.stats.inProgress;
+        document.getElementById("st-resolved").textContent = d.stats.resolved;
+      }
+
+      async function loadDepartments() {
+        const d = await apiRequest("/admin/departments");
+        departments = d.departments;
+      }
+
+      function deptOptions(selectedId) {
+        const sid = selectedId != null ? String(selectedId) : "";
+        return departments
+          .map(
+            (dep) =>
+              `<option value="${dep._id}" ${sid === String(dep._id) ? "selected" : ""}>${escapeHtml(dep.name)}</option>`
+          )
+          .join("");
+      }
+
+      async function loadTable() {
+        const status = document.getElementById("filter-status").value;
+        const qs = status ? "?status=" + encodeURIComponent(status) : "";
+        const data = await apiRequest("/admin/complaints" + qs);
+        const tbody = document.getElementById("rows");
+        tbody.innerHTML = "";
+        for (const c of data.complaints) {
+          const tr = document.createElement("tr");
+          const cit = c.citizen
+            ? escapeHtml(c.citizen.name) + " <br><small>" + escapeHtml(c.citizen.email) + "</small>"
+            : "—";
+          const selId = c.assignedDepartment ? String(c.assignedDepartment._id) : "";
+          tr.innerHTML = `
+            <td>${escapeHtml(c.title)}<br><small class="muted">${escapeHtml(c.description).slice(0, 80)}${
+            c.description.length > 80 ? "…" : ""
+          }</small></td>
+            <td>${cit}</td>
+            <td><span class="category-tag">${c.category}</span></td>
+            <td>${escapeHtml(c.location)}</td>
+            <td><span class="${badgeClass(c.status)}">${c.status.replace("_", " ")}</span></td>
+            <td>
+              <select class="assign-dept" data-id="${c._id}" style="max-width:140px">
+                <option value="">— Department —</option>
+                ${deptOptions(selId)}
+              </select>
+              <button type="button" class="btn btn-primary btn-sm btn-assign" data-id="${c._id}">Assign</button>
+            </td>
+            <td>
+              <select class="adm-status" data-id="${c._id}" style="max-width:120px">
+                <option value="pending" ${c.status === "pending" ? "selected" : ""}>pending</option>
+                <option value="assigned" ${c.status === "assigned" ? "selected" : ""}>assigned</option>
+                <option value="in_progress" ${c.status === "in_progress" ? "selected" : ""}>in progress</option>
+                <option value="resolved" ${c.status === "resolved" ? "selected" : ""}>resolved</option>
+              </select>
+              <input type="text" class="adm-notes" data-id="${c._id}" placeholder="Resolution notes" value="${escapeHtml(
+            c.resolutionNotes || ""
+          )}" style="width:100%;margin-top:4px" />
+              <button type="button" class="btn btn-secondary btn-sm btn-save-status" data-id="${
+                c._id
+              }">Save</button>
+            </td>
+            <td><button type="button" class="btn btn-danger btn-sm btn-del" data-id="${c._id}">Delete</button></td>`;
+          tbody.appendChild(tr);
+        }
+
+        tbody.querySelectorAll(".btn-assign").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-id");
+            const row = btn.closest("tr");
+            const select = row.querySelector(".assign-dept");
+            const departmentId = select.value;
+            if (!departmentId) {
+              showAlert("Choose a department first.", false);
+              return;
+            }
+            try {
+              await apiRequest("/admin/complaints/" + id + "/assign", {
+                method: "PATCH",
+                body: JSON.stringify({ departmentId }),
+              });
+              showAlert("Assigned successfully.", true);
+              await refreshAll();
+            } catch (e) {
+              showAlert(e.message, false);
+            }
+          });
+        });
+
+        tbody.querySelectorAll(".btn-save-status").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-id");
+            const row = btn.closest("tr");
+            const status = row.querySelector(".adm-status").value;
+            const resolutionNotes = row.querySelector(".adm-notes").value;
+            try {
+              await apiRequest("/admin/complaints/" + id + "/status", {
+                method: "PATCH",
+                body: JSON.stringify({ status, resolutionNotes }),
+              });
+              showAlert("Status updated.", true);
+              await refreshAll();
+            } catch (e) {
+              showAlert(e.message, false);
+            }
+          });
+        });
+
+        tbody.querySelectorAll(".btn-del").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            if (!confirm("Delete this complaint permanently?")) return;
+            const id = btn.getAttribute("data-id");
+            try {
+              await apiRequest("/admin/complaints/" + id, { method: "DELETE" });
+              showAlert("Deleted.", true);
+              await refreshAll();
+            } catch (e) {
+              showAlert(e.message, false);
+            }
+          });
+        });
+      }
+
+      async function refreshAll() {
+        try {
+          await loadStats();
+          await loadTable();
+        } catch (e) {
+          showAlert(e.message, false);
+        }
+      }
+
+      document.getElementById("filter-status").addEventListener("change", refreshAll);
+      document.getElementById("refresh").addEventListener("click", refreshAll);
+      document.getElementById("logout").addEventListener("click", () => {
+        clearSession();
+        window.location.href = "/login.html";
+      });
+
+      (async function init() {
+        try {
+          await loadDepartments();
+          departments.sort((a, b) => a.name.localeCompare(b.name));
+          await refreshAll();
+        } catch (e) {
+          showAlert(e.message, false);
+        }
+      })();
+    </script>
+  </body>
+</html>

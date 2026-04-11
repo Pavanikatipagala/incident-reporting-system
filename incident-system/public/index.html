@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Incident Reporting</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <a class="navbar-brand" href="/">IncidentHub</a>
+      <div class="nav-links">
+        <a href="/login.html">Login</a>
+        <a href="/register.html">Register</a>
+      </div>
+    </nav>
+    <div class="container landing-hero">
+      <h1>Smart Incident Reporting &amp; Management</h1>
+      <p class="subtitle">
+        Report public infrastructure issues — roads, water, electricity, and waste — and track them to resolution.
+      </p>
+      <div class="btn-group" style="justify-content: center">
+        <a class="btn btn-primary" href="/register.html">Citizen signup</a>
+        <a class="btn btn-secondary" href="/login.html">Sign in</a>
+      </div>
+      <div class="role-cards">
+        <div class="card">
+          <h3>Citizens</h3>
+          <p class="muted">Submit complaints with location and optional photo. Track status and manage your reports.</p>
+          <a href="/register.html">Create account →</a>
+        </div>
+        <div class="card">
+          <h3>Admin</h3>
+          <p class="muted">Oversee all tickets, assign departments, and monitor dashboard metrics.</p>
+          <a href="/login.html">Authority login →</a>
+        </div>
+        <div class="card">
+          <h3>Departments</h3>
+          <p class="muted">Road, Water, Electricity, and Sanitation teams update progress and close issues.</p>
+          <a href="/login.html">Department login →</a>
+        </div>
+      </div>
+    </div>
+    <script src="/js/api.js"></script>
+    <script>
+      // If already logged in, send user to the right dashboard
+      if (getToken() && getUser()) {
+        goToRoleHome();
+      }
+    </script>
+  </body>
+</html>

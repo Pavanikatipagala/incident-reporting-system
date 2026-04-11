@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Citizen Dashboard — IncidentHub</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <a class="navbar-brand" href="/citizen.html">IncidentHub — Citizen</a>
+      <div class="nav-links">
+        <span id="welcome" class="muted"></span>
+        <button type="button" class="btn btn-secondary btn-sm" id="logout">Logout</button>
+      </div>
+    </nav>
+    <div class="container">
+      <h1>My complaints</h1>
+      <p class="subtitle">Report infrastructure issues and track their status.</p>
+      <div id="alert"></div>
+
+      <div class="card">
+        <h2 id="form-title">Submit new complaint</h2>
+        <form id="complaint-form">
+          <input type="hidden" id="edit-id" value="" />
+          <div class="form-group">
+            <label for="title">Title</label>
+            <input id="title" name="title" required />
+          </div>
+          <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" required></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="category">Category</label>
+              <select id="category" name="category" required>
+                <option value="">— Select —</option>
+                <option value="roads">Roads (potholes, damage)</option>
+                <option value="water">Water (leakage, supply)</option>
+                <option value="electricity">Electricity (streetlights, power)</option>
+                <option value="waste">Waste (garbage, sanitation)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="location">Location</label>
+              <input id="location" name="location" placeholder="Area, landmark, or address" required />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="image">Optional image</label>
+            <input id="image" name="image" type="file" accept="image/*" />
+          </div>
+          <div class="btn-group">
+            <button type="submit" class="btn btn-primary" id="submit-btn">Submit</button>
+            <button type="button" class="btn btn-secondary hidden-when-new" id="cancel-edit" style="display: none">
+              Cancel edit
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <h2>Submitted complaints</h2>
+      <div class="card table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Category</th>
+              <th>Location</th>
+              <th>Status</th>
+              <th>Dept</th>
+              <th>Image</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <p id="empty" class="muted" style="display: none">No complaints yet. Use the form above to submit one.</p>
+      </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script>
+      const user = getUser();
+      if (!getToken() || !user || user.role !== "citizen") {
+        window.location.href = "/login.html";
+      }
+      document.getElementById("welcome").textContent = user.name;
+
+      function badgeClass(status) {
+        return "badge badge-" + status;
+      }
+
+      function showAlert(html, ok) {
+        const el = document.getElementById("alert");
+        el.innerHTML = html ? `<div class="alert ${ok ? "alert-success" : "alert-error"}">${html}</div>` : "";
+      }
+
+      async function loadComplaints() {
+        const tbody = document.getElementById("rows");
+        tbody.innerHTML = "";
+        const data = await apiRequest("/complaints/my");
+        document.getElementById("empty").style.display = data.complaints.length ? "none" : "block";
+        for (const c of data.complaints) {
+          const tr = document.createElement("tr");
+          const imgCell = c.image
+            ? `<img class="thumb" src="${c.image}" alt="" />`
+            : "—";
+          const dept = c.assignedDepartment ? c.assignedDepartment.name : "—";
+          tr.innerHTML = `
+            <td>${escapeHtml(c.title)}</td>
+            <td><span class="category-tag">${c.category}</span></td>
+            <td>${escapeHtml(c.location)}</td>
+            <td><span class="${badgeClass(c.status)}">${c.status.replace("_", " ")}</span></td>
+            <td>${escapeHtml(dept)}</td>
+            <td>${imgCell}</td>
+            <td class="btn-group">
+              <button type="button" class="btn btn-secondary btn-sm" data-edit="${c._id}">Edit</button>
+              <button type="button" class="btn btn-danger btn-sm" data-del="${c._id}" ${
+            c.status !== "pending" ? "disabled title='Only pending can be deleted'" : ""
+          }>Delete</button>
+            </td>`;
+          tbody.appendChild(tr);
+        }
+        tbody.querySelectorAll("[data-edit]").forEach((btn) =>
+          btn.addEventListener("click", () => startEdit(btn.getAttribute("data-edit")))
+        );
+        tbody.querySelectorAll("[data-del]").forEach((btn) =>
+          btn.addEventListener("click", () => removeComplaint(btn.getAttribute("data-del")))
+        );
+      }
+
+      function escapeHtml(s) {
+        if (!s) return "";
+        const d = document.createElement("div");
+        d.textContent = s;
+        return d.innerHTML;
+      }
+
+      function resetForm() {
+        document.getElementById("complaint-form").reset();
+        document.getElementById("edit-id").value = "";
+        document.getElementById("form-title").textContent = "Submit new complaint";
+        document.getElementById("submit-btn").textContent = "Submit";
+        document.getElementById("cancel-edit").style.display = "none";
+      }
+
+      async function startEdit(id) {
+        const data = await apiRequest("/complaints/" + id);
+        const c = data.complaint;
+        if (c.status === "resolved") {
+          showAlert("Resolved complaints cannot be edited.", false);
+          return;
+        }
+        document.getElementById("edit-id").value = c._id;
+        document.getElementById("title").value = c.title;
+        document.getElementById("description").value = c.description;
+        document.getElementById("category").value = c.category;
+        document.getElementById("location").value = c.location;
+        document.getElementById("form-title").textContent = "Edit complaint";
+        document.getElementById("submit-btn").textContent = "Save changes";
+        document.getElementById("cancel-edit").style.display = "inline-block";
+        showAlert("", true);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      async function removeComplaint(id) {
+        if (!confirm("Delete this complaint? Only allowed while status is Pending.")) return;
+        try {
+          await apiRequest("/complaints/" + id, { method: "DELETE" });
+          showAlert("Complaint deleted.", true);
+          await loadComplaints();
+        } catch (e) {
+          showAlert(e.message, false);
+        }
+      }
+
+      document.getElementById("cancel-edit").addEventListener("click", resetForm);
+
+      document.getElementById("complaint-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        showAlert("", true);
+        const editId = document.getElementById("edit-id").value;
+        const fd = new FormData();
+        fd.append("title", document.getElementById("title").value.trim());
+        fd.append("description", document.getElementById("description").value.trim());
+        fd.append("category", document.getElementById("category").value);
+        fd.append("location", document.getElementById("location").value.trim());
+        const fileInput = document.getElementById("image");
+        if (fileInput.files[0]) fd.append("image", fileInput.files[0]);
+
+        try {
+          if (editId) {
+            await apiRequest("/complaints/" + editId, { method: "PUT", body: fd });
+            showAlert("Complaint updated.", true);
+          } else {
+            await apiRequest("/complaints", { method: "POST", body: fd });
+            showAlert("Complaint submitted.", true);
+          }
+          resetForm();
+          await loadComplaints();
+        } catch (err) {
+          showAlert(err.message, false);
+        }
+      });
+
+      document.getElementById("logout").addEventListener("click", () => {
+        clearSession();
+        window.location.href = "/login.html";
+      });
+
+      loadComplaints().catch((e) => showAlert(e.message, false));
+    </script>
+  </body>
+</html>
+

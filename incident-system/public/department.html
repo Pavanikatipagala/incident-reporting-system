@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Department Dashboard — IncidentHub</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <a class="navbar-brand" href="/department.html">IncidentHub — Department</a>
+      <div class="nav-links">
+        <span id="dept-name" class="muted"></span>
+        <span id="welcome" class="muted"></span>
+        <button type="button" class="btn btn-secondary btn-sm" id="logout">Logout</button>
+      </div>
+    </nav>
+    <div class="container">
+      <h1>Department workspace</h1>
+      <p class="subtitle">Work assigned tickets, update progress, and review resolved history.</p>
+      <div id="alert"></div>
+
+      <div class="grid-stats">
+        <div class="stat-box"><div class="num" id="st-open">—</div><div class="label">Open assigned</div></div>
+        <div class="stat-box"><div class="num" id="st-done">—</div><div class="label">Resolved (history)</div></div>
+      </div>
+
+      <h2>Open complaints</h2>
+      <div class="card table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Citizen</th>
+              <th>Category</th>
+              <th>Location</th>
+              <th>Status</th>
+              <th>Update</th>
+            </tr>
+          </thead>
+          <tbody id="open-rows"></tbody>
+        </table>
+        <p id="open-empty" class="muted" style="display: none">No open complaints assigned to your department.</p>
+      </div>
+
+      <h2>History (resolved)</h2>
+      <div class="card table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Citizen</th>
+              <th>Category</th>
+              <th>Resolved notes</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody id="hist-rows"></tbody>
+        </table>
+        <p id="hist-empty" class="muted" style="display: none">No resolved complaints yet.</p>
+      </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script>
+      const user = getUser();
+      if (!getToken() || !user || user.role !== "department") {
+        window.location.href = "/login.html";
+      }
+      document.getElementById("welcome").textContent = user.name;
+      document.getElementById("dept-name").textContent = user.department
+        ? user.department.name
+        : "(no department)";
+
+      function showAlert(msg, ok) {
+        const el = document.getElementById("alert");
+        el.innerHTML = msg ? `<div class="alert ${ok ? "alert-success" : "alert-error"}">${msg}</div>` : "";
+      }
+
+      function badgeClass(status) {
+        return "badge badge-" + status;
+      }
+
+      function escapeHtml(s) {
+        if (!s) return "";
+        const d = document.createElement("div");
+        d.textContent = s;
+        return d.innerHTML;
+      }
+
+      async function loadStats() {
+        const d = await apiRequest("/department/dashboard");
+        document.getElementById("st-open").textContent = d.stats.open;
+        document.getElementById("st-done").textContent = d.stats.resolved;
+      }
+
+      async function loadOpen() {
+        const data = await apiRequest("/department/complaints");
+        const tbody = document.getElementById("open-rows");
+        tbody.innerHTML = "";
+        document.getElementById("open-empty").style.display = data.complaints.length ? "none" : "block";
+        for (const c of data.complaints) {
+          const tr = document.createElement("tr");
+          const cit = c.citizen
+            ? escapeHtml(c.citizen.name) + '<br><small class="muted">' + escapeHtml(c.citizen.email) + "</small>"
+            : "—";
+          tr.innerHTML = `
+            <td>${escapeHtml(c.title)}</td>
+            <td>${cit}</td>
+            <td><span class="category-tag">${c.category}</span></td>
+            <td>${escapeHtml(c.location)}</td>
+            <td><span class="${badgeClass(c.status)}">${c.status.replace("_", " ")}</span></td>
+            <td>
+              <select class="dept-status" data-id="${c._id}">
+                <option value="in_progress" ${c.status === "in_progress" ? "selected" : ""}>In progress</option>
+                <option value="resolved" ${c.status === "resolved" ? "selected" : ""}>Resolved</option>
+              </select>
+              <textarea class="dept-notes" data-id="${c._id}" rows="2" style="width:100%;margin-top:4px" placeholder="Resolution notes">${escapeHtml(
+            c.resolutionNotes || ""
+          )}</textarea>
+              <button type="button" class="btn btn-primary btn-sm dept-save" data-id="${c._id}">Save</button>
+            </td>`;
+          tbody.appendChild(tr);
+        }
+        tbody.querySelectorAll(".dept-save").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-id");
+            const row = btn.closest("tr");
+            const status = row.querySelector(".dept-status").value;
+            const resolutionNotes = row.querySelector(".dept-notes").value;
+            try {
+              await apiRequest("/department/complaints/" + id, {
+                method: "PATCH",
+                body: JSON.stringify({ status, resolutionNotes }),
+              });
+              showAlert("Saved.", true);
+              await refreshAll();
+            } catch (e) {
+              showAlert(e.message, false);
+            }
+          });
+        });
+      }
+
+      async function loadHistory() {
+        const data = await apiRequest("/department/history");
+        const tbody = document.getElementById("hist-rows");
+        tbody.innerHTML = "";
+        document.getElementById("hist-empty").style.display = data.complaints.length ? "none" : "block";
+        for (const c of data.complaints) {
+          const tr = document.createElement("tr");
+          const cit = c.citizen ? escapeHtml(c.citizen.name) : "—";
+          const updated = c.updatedAt ? new Date(c.updatedAt).toLocaleString() : "—";
+          tr.innerHTML = `
+            <td>${escapeHtml(c.title)}</td>
+            <td>${cit}</td>
+            <td><span class="category-tag">${c.category}</span></td>
+            <td>${escapeHtml(c.resolutionNotes || "—")}</td>
+            <td>${updated}</td>`;
+          tbody.appendChild(tr);
+        }
+      }
+
+      async function refreshAll() {
+        try {
+          await loadStats();
+          await loadOpen();
+          await loadHistory();
+        } catch (e) {
+          showAlert(e.message, false);
+        }
+      }
+
+      document.getElementById("logout").addEventListener("click", () => {
+        clearSession();
+        window.location.href = "/login.html";
+      });
+
+      refreshAll();
+    </script>
+  </body>
+</html>
