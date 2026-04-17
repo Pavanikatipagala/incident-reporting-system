@@ -1,4 +1,5 @@
  Smart Incident Reporting and Management System
+ Live demo: https://incident-reporting-system-ohc7.onrender.com
 A full-stack web application to report and manage public infrastructure issues like road damage, water leakage, electricity faults, and waste/sanitation problems.
 Built with **Node.js + Express**, **MongoDB**, **JWT Authentication**, and **Vanilla HTML/CSS/JavaScript**.
 ---
